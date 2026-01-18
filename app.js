@@ -9,11 +9,16 @@ const CONFIG = {
 const state = {
     isCalibrating: false,
     calibrationData: {
-        emf: 40.0 // Valeur par défaut (Terrestre ~25-65 µT)
+        emf: 10.0, // Valeur arbitraire de base (stabilité)
     },
     audioContext: null,
     analyser: null,
-    dataArray: null
+    dataArray: null,
+    lastAlpha: null,
+    lastUpdate: 0,
+    currentEmf: 0,
+    currentAcc: 0,
+    calibrationBuffer: []
 };
 
 // Éléments DOM
@@ -49,7 +54,7 @@ function initCharts() {
         data: {
             labels: Array(CONFIG.chartHistory).fill(''),
             datasets: [{
-                label: 'EMF (µT)',
+                label: 'EMF (Pseudo-µT)',
                 data: Array(CONFIG.chartHistory).fill(0),
                 borderColor: '#00ff41',
                 borderWidth: 2,
@@ -105,65 +110,94 @@ function updateLineChart(chart, newValue) {
     chart.update();
 }
 
-// Variables pour les capteurs
-let magSensor = null;
-let accSensor = null;
-
 // Initialisation
 window.addEventListener('load', () => {
     initCharts();
-    dom.statusText.textContent = "Prêt. En attente d'activation.";
+    dom.statusText.textContent = "Prêt. Appuyez sur CALIBRER pour activer les capteurs.";
 
     // Listeners
-    dom.btnCalibrate.addEventListener('click', calibrate);
+    dom.btnCalibrate.addEventListener('click', requestPermissionsAndStart);
     dom.btnStart.addEventListener('click', startAudio);
-
-    initMagnetometer();
-    initAccelerometer();
 });
 
-function initAccelerometer() {
-    // On privilégie LinearAccelerationSensor pour ignorer la gravité
-    if ('LinearAccelerationSensor' in window) {
-        try {
-            accSensor = new LinearAccelerationSensor({ frequency: 60 });
-            accSensor.addEventListener('reading', () => {
-                const x = accSensor.x;
-                const y = accSensor.y;
-                const z = accSensor.z;
-                // Magnitude du vecteur accélération (vibration)
-                const magnitude = Math.sqrt(x*x + y*y + z*z);
-                updateAcc(magnitude);
-            });
-            accSensor.addEventListener('error', event => {
-                console.error("Erreur accéléromètre:", event.error);
-                // Fallback possible vers devicemotion ici si besoin
-            });
-            accSensor.start();
-        } catch (error) {
-            console.error("Erreur init LinearAccelerationSensor:", error);
-        }
-    } else if ('Accelerometer' in window) {
-         // Fallback sur Accelerometer standard (inclut gravité ~9.81)
-         try {
-            accSensor = new Accelerometer({ frequency: 60 });
-            accSensor.addEventListener('reading', () => {
-                const x = accSensor.x;
-                const y = accSensor.y;
-                const z = accSensor.z;
-                // On essaie de retirer approximativement la gravité pour voir les vibrations
-                // C'est une approx très simple.
-                const total = Math.sqrt(x*x + y*y + z*z);
-                const vibration = Math.abs(total - 9.81);
-                updateAcc(vibration);
-            });
-            accSensor.start();
-         } catch (e) {
-             console.error("Erreur init Accelerometer:", e);
-         }
+// Gestion des permissions iOS 13+ et démarrage
+function requestPermissionsAndStart() {
+    // iOS 13+ requiert une demande explicite pour DeviceOrientation/Motion
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission()
+            .then(response => {
+                if (response === 'granted') {
+                    startSensors();
+                    calibrate();
+                } else {
+                    dom.statusText.textContent = "Permission capteurs refusée.";
+                }
+            })
+            .catch(console.error);
     } else {
-        console.log("Accéléromètre non supporté via Generic Sensor API.");
+        // Android / Non-iOS 13+
+        startSensors();
+        calibrate();
     }
+}
+
+function startSensors() {
+    // Sismographe (Accéléromètre)
+    window.addEventListener('devicemotion', (event) => {
+        const acc = event.acceleration || event.accelerationIncludingGravity;
+        if (acc) {
+            const x = acc.x || 0;
+            const y = acc.y || 0;
+            const z = acc.z || 0;
+            state.currentAcc = Math.sqrt(x*x + y*y + z*z);
+        }
+        processSensorData();
+    });
+
+    // Magnétomètre (Via Orientation)
+    window.addEventListener('deviceorientation', (event) => {
+        const alpha = event.alpha;
+        if (alpha !== null) {
+            if (state.lastAlpha !== null) {
+                let delta = Math.abs(alpha - state.lastAlpha);
+                if (delta > 180) delta = 360 - delta;
+
+                // Instabilité boussole * facteur arbitraire
+                let pseudoEmf = delta * 50;
+                state.currentEmf = Math.min(pseudoEmf, 200);
+            }
+            state.lastAlpha = alpha;
+        }
+        processSensorData();
+    });
+
+    dom.statusText.textContent = "Capteurs actifs (Mode Universel).";
+}
+
+function processSensorData() {
+    // Throttling pour éviter de surcharger le thread UI (60fps vs updateInterval)
+    const now = Date.now();
+    if (now - state.lastUpdate < CONFIG.updateInterval) return;
+
+    state.lastUpdate = now;
+
+    if (state.isCalibrating) {
+        // Collecte des données pour calibration
+        state.calibrationBuffer.push(state.currentEmf);
+    } else {
+        // Mise à jour normale
+        updateEmf(state.currentEmf);
+        updateAcc(state.currentAcc);
+    }
+}
+
+function updateEmf(value) {
+    // Lissage visuel
+    const displayValue = Math.max(0, value).toFixed(2);
+    dom.emfValue.textContent = displayValue;
+
+    updateLineChart(emfChart, value);
+    checkAlert(value);
 }
 
 function updateAcc(value) {
@@ -171,87 +205,50 @@ function updateAcc(value) {
     updateLineChart(accChart, value);
 }
 
-function initMagnetometer() {
-    if ('Magnetometer' in window) {
-        try {
-            magSensor = new Magnetometer({ frequency: 10 }); // 10 Hz
-            magSensor.addEventListener('reading', () => {
-                // Calcul de la magnitude (Total Microteslas)
-                // Certains navigateurs renvoient x, y, z. La magnitude est sqrt(x² + y² + z²)
-                const x = magSensor.x;
-                const y = magSensor.y;
-                const z = magSensor.z;
-                const totalField = Math.sqrt(x*x + y*y + z*z);
-
-                updateEmf(totalField);
-            });
-
-            magSensor.addEventListener('error', event => {
-                console.error(event.error.name, event.error.message);
-                if (event.error.name === 'NotAllowedError') {
-                    dom.statusText.textContent = "Erreur: Permission refusée pour le magnétomètre.";
-                } else if (event.error.name === 'NotReadableError') {
-                    dom.statusText.textContent = "Erreur: Magnétomètre inaccessible.";
-                }
-            });
-
-            magSensor.start();
-            dom.statusText.textContent = "Magnétomètre actif.";
-
-        } catch (error) {
-            console.error("Erreur init magnétomètre:", error);
-            dom.statusText.textContent = "Erreur magnétomètre (voir console).";
-        }
-    } else {
-        dom.statusText.textContent = "API Magnetometer non supportée par ce navigateur.";
-        // Fallback possible: DeviceOrientationEvent (moins précis, pas de µT)
-        // Pour cet exercice, on reste sur Magnetometer comme demandé pour les µT.
-    }
-}
-
-function updateEmf(value) {
-    // Mise à jour de l'affichage numérique
-    dom.emfValue.textContent = value.toFixed(2);
-
-    // Mise à jour du graphique
-    updateLineChart(emfChart, value);
-
-    // Vérification alerte (si calibration faite)
-    checkAlert(value);
-}
-
 function checkAlert(currentVal) {
-    if (!state.calibrationData.emf) return;
+    if (!state.isCalibrating && state.calibrationData.emf > 0) {
+        const threshold = state.calibrationData.emf * CONFIG.alertThreshold;
 
-    const baseline = state.calibrationData.emf;
-    const threshold = baseline * CONFIG.alertThreshold;
-
-    if (currentVal > threshold) {
-        dom.alertOverlay.classList.add('alert-active');
-    } else {
-        dom.alertOverlay.classList.remove('alert-active');
+        // On évite les déclenchements trop faciles (bruit de fond)
+        // Seuil minimum de 5 "µT" pour éviter le bruit pur
+        if (currentVal > threshold && currentVal > 5) {
+            dom.alertOverlay.classList.add('alert-active');
+        } else {
+            dom.alertOverlay.classList.remove('alert-active');
+        }
     }
 }
 
 function calibrate() {
     console.log("Calibration demandée...");
-    if (magSensor && magSensor.hasReading) {
-        // On prend la valeur actuelle comme base
-        const x = magSensor.x;
-        const y = magSensor.y;
-        const z = magSensor.z;
-        const currentMag = Math.sqrt(x*x + y*y + z*z);
+    dom.statusText.textContent = "Calibration (ne bougez pas)...";
+    state.isCalibrating = true;
+    state.calibrationBuffer = [];
 
-        state.calibrationData.emf = currentMag;
-        dom.statusText.textContent = `Calibré à ${currentMag.toFixed(2)} µT.`;
-    } else {
-        dom.statusText.textContent = "Impossible de calibrer (pas de lecture capteur).";
-    }
+    setTimeout(() => {
+        state.isCalibrating = false;
+
+        // Calcul de la moyenne du bruit ambiant
+        if (state.calibrationBuffer.length > 0) {
+            const sum = state.calibrationBuffer.reduce((a, b) => a + b, 0);
+            let avg = sum / state.calibrationBuffer.length;
+
+            // On s'assure d'avoir un minimum (pas 0) pour que le % fonctionne
+            avg = Math.max(avg, 2.0);
+
+            state.calibrationData.emf = avg;
+            dom.statusText.textContent = `Calibré (Base: ${avg.toFixed(1)}). Détection active.`;
+        } else {
+            // Fallback si aucun event reçu
+            state.calibrationData.emf = 10.0;
+            dom.statusText.textContent = "Calibré (Défaut). Détection active.";
+        }
+    }, 2000);
 }
 
 function startAudio() {
     console.log("Démarrage audio...");
-    if (state.audioContext) return; // Déjà démarré
+    if (state.audioContext) return;
 
     navigator.mediaDevices.getUserMedia({ audio: true, video: false })
         .then(stream => {
@@ -261,8 +258,7 @@ function startAudio() {
             const source = state.audioContext.createMediaStreamSource(stream);
             source.connect(state.analyser);
 
-            // Configuration FFT
-            state.analyser.fftSize = 64; // On veut 32 barres (fftSize / 2)
+            state.analyser.fftSize = 64;
             const bufferLength = state.analyser.frequencyBinCount;
             state.dataArray = new Uint8Array(bufferLength);
 
@@ -273,7 +269,7 @@ function startAudio() {
         })
         .catch(err => {
             console.error("Erreur accès micro:", err);
-            dom.statusText.textContent = "Erreur accès micro (HTTPS requis).";
+            dom.statusText.textContent = "Erreur micro (HTTPS/Mobile ?).";
         });
 }
 
@@ -284,13 +280,10 @@ function updateAudioChart() {
 
     state.analyser.getByteFrequencyData(state.dataArray);
 
-    // Mise à jour des données du graphique
-    // On copie les données dans le dataset de Chart.js
     const data = audioChart.data.datasets[0].data;
     for (let i = 0; i < state.dataArray.length; i++) {
         data[i] = state.dataArray[i];
     }
 
-    // Mode 'none' pour performance (pas d'animation d'interpolation)
     audioChart.update('none');
 }
