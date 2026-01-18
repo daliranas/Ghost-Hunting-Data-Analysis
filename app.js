@@ -26,7 +26,7 @@ const dom = {
     emfValue: document.getElementById('emf-value'),
     accValue: document.getElementById('acc-value'),
     alertOverlay: document.getElementById('alert-overlay'),
-    statusText: document.getElementById('status-text'),
+    statusText: document.getElementById('status-bar'),
     btnCalibrate: document.getElementById('btn-calibrate'),
     btnStart: document.getElementById('btn-start')
 };
