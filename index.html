@@ -2,7 +2,10 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Ghost Hunter Terminal</title>
     <link rel="stylesheet" href="style.css">
     <!-- Chart.js CDN -->
@@ -12,34 +15,40 @@
     <div class="overlay" id="alert-overlay"></div>
 
     <header>
-        <h1>DÉTECTEUR PARANORMAL</h1>
-        <div id="status-bar">État: <span id="status-text">Initialisation...</span></div>
+        <h1>PARANORMAL DETECTOR</h1>
+        <div id="status-bar">Waiting for calibration...</div>
     </header>
 
     <main>
-        <div class="control-panel">
-            <button id="btn-calibrate" class="btn">CALIBRER CAPTEURS</button>
-            <button id="btn-start" class="btn">ACTIVER AUDIO</button>
+        <div class="controls-wrapper">
+            <button id="btn-calibrate" class="btn">CALIBRER</button>
+            <button id="btn-start" class="btn">AUDIO ON</button>
         </div>
 
-        <div class="sensor-card">
-            <h2>MAGNÉTOMÈTRE (EMF)</h2>
-            <div class="value-display"><span id="emf-value">0.00</span> µT</div>
+        <div class="sensor-card" id="emf-card">
+            <div class="card-header">
+                <h2>MAG (EMF)</h2>
+                <div class="value-display"><span id="emf-value">0.00</span> <small>Δ</small></div>
+            </div>
             <div class="chart-container">
                 <canvas id="emfChart"></canvas>
             </div>
         </div>
 
-        <div class="sensor-card">
-            <h2>SISMOGRAPHE (VIBRATIONS)</h2>
-            <div class="value-display"><span id="acc-value">0.00</span> m/s²</div>
+        <div class="sensor-card" id="acc-card">
+            <div class="card-header">
+                <h2>VIBRATION</h2>
+                <div class="value-display"><span id="acc-value">0.00</span></div>
+            </div>
             <div class="chart-container">
                 <canvas id="accChart"></canvas>
             </div>
         </div>
 
-        <div class="sensor-card">
-            <h2>SPECTRE AUDIO (EVP)</h2>
+        <div class="sensor-card" id="audio-card">
+            <div class="card-header">
+                <h2>SPECTRE EVP</h2>
+            </div>
             <div class="chart-container">
                 <canvas id="audioChart"></canvas>
             </div>
@@ -47,7 +56,7 @@
     </main>
 
     <footer>
-        <p>Expert Mobile Web Development - v1.0</p>
+        <p>GHOST HUNTER v2.0 - MOBILE EDITION</p>
     </footer>
 
     <script src="app.js"></script>
