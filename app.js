@@ -47,6 +47,19 @@ function initCharts() {
         plugins: { legend: { display: false } }
     };
 
+    // Options graphiques ajustées pour mobile
+    const chartOptions = {
+        ...commonOptions,
+        layout: { padding: 5 },
+        scales: {
+            x: { display: false },
+            y: {
+                display: false, // On cache les axes Y pour gagner de la place
+                grid: { display: false }
+            }
+        }
+    };
+
     // Magnétomètre
     const ctxEmf = document.getElementById('emfChart').getContext('2d');
     emfChart = new Chart(ctxEmf, {
@@ -54,14 +67,17 @@ function initCharts() {
         data: {
             labels: Array(CONFIG.chartHistory).fill(''),
             datasets: [{
-                label: 'EMF (Pseudo-µT)',
+                label: 'EMF',
                 data: Array(CONFIG.chartHistory).fill(0),
                 borderColor: '#00ff41',
+                backgroundColor: 'rgba(0, 255, 65, 0.1)',
+                fill: true,
                 borderWidth: 2,
-                tension: 0.4
+                tension: 0.3,
+                pointRadius: 0
             }]
         },
-        options: commonOptions
+        options: chartOptions
     });
 
     // Accéléromètre
@@ -74,10 +90,14 @@ function initCharts() {
                 label: 'Vibration',
                 data: Array(CONFIG.chartHistory).fill(0),
                 borderColor: '#ffff00',
-                borderWidth: 2
+                backgroundColor: 'rgba(255, 255, 0, 0.1)',
+                fill: true,
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 0
             }]
         },
-        options: commonOptions
+        options: chartOptions
     });
 
     // Audio
@@ -85,11 +105,12 @@ function initCharts() {
     audioChart = new Chart(ctxAudio, {
         type: 'bar',
         data: {
-            labels: Array(32).fill(''), // 32 bandes de fréquence
+            labels: Array(16).fill(''), // Réduit à 16 pour meilleure lisibilité mobile
             datasets: [{
                 label: 'Fréquence',
-                data: Array(32).fill(0),
-                backgroundColor: '#ff00ff'
+                data: Array(16).fill(0),
+                backgroundColor: '#ff00ff',
+                borderRadius: 2
             }]
         },
         options: {
@@ -258,7 +279,8 @@ function startAudio() {
             const source = state.audioContext.createMediaStreamSource(stream);
             source.connect(state.analyser);
 
-            state.analyser.fftSize = 64;
+            state.analyser.fftSize = 64; // Donne 32 bins
+            // On ne gardera que les 16 premiers pour le chart (basses/mediums plus pertinents)
             const bufferLength = state.analyser.frequencyBinCount;
             state.dataArray = new Uint8Array(bufferLength);
 
