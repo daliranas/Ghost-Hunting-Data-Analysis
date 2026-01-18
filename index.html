@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost Hunter Terminal</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="overlay" id="alert-overlay"></div>
+
+    <header>
+        <h1>DÉTECTEUR PARANORMAL</h1>
+        <div id="status-bar">État: <span id="status-text">Initialisation...</span></div>
+    </header>
+
+    <main>
+        <div class="control-panel">
+            <button id="btn-calibrate" class="btn">CALIBRER CAPTEURS</button>
+            <button id="btn-start" class="btn">ACTIVER AUDIO</button>
+        </div>
+
+        <div class="sensor-card">
+            <h2>MAGNÉTOMÈTRE (EMF)</h2>
+            <div class="value-display"><span id="emf-value">0.00</span> µT</div>
+            <div class="chart-container">
+                <canvas id="emfChart"></canvas>
+            </div>
+        </div>
+
+        <div class="sensor-card">
+            <h2>SISMOGRAPHE (VIBRATIONS)</h2>
+            <div class="value-display"><span id="acc-value">0.00</span> m/s²</div>
+            <div class="chart-container">
+                <canvas id="accChart"></canvas>
+            </div>
+        </div>
+
+        <div class="sensor-card">
+            <h2>SPECTRE AUDIO (EVP)</h2>
+            <div class="chart-container">
+                <canvas id="audioChart"></canvas>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>Expert Mobile Web Development - v1.0</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
